@@ -38,6 +38,7 @@
 #include <ctype.h>
 #include <dirent.h>
 #include <fcntl.h>
+#include <stdint.h>
 
 #define WHITESPACE " \t\n" // We want to split our command line up into tokens
                            // so we need to define what delimits our tokens.
@@ -47,6 +48,22 @@
 #define MAX_COMMAND_SIZE 255 // The maximum command-line size
 
 #define MAX_NUM_ARGUMENTS 32
+
+// FAT32 Structures and Global Variables
+struct __attribute__((__packed__)) DirectoryEntry {
+    char DIR_Name[11];
+    uint8_t DIR_Attr;
+    uint8_t Unused1[8];
+    uint16_t DIR_FirstClusterHigh;
+    uint8_t Unused2[4];
+    uint16_t DIR_FirstClusterLow;
+    uint32_t DIR_FileSize;
+};
+struct DirectoryEntry dir[16];
+
+FILE *fp = NULL;  // File pointer
+int isOpen = 0;  // Flag to check if a file is open
+char currentImage[100];  // Name of the current FAT32 image
 
 void errMess()
 {
@@ -70,23 +87,50 @@ void changeDir(char *token[])
   }
 }
 
-void findPath(char *token[])
+void openImage(char *filename)
 {
-  //printf("were in bro\n");
-
-  char fullPath[30];
-  char *pathOptions[] = {"/bin/", "/usr/bin/", "/usr/local/bin/", "./"};
-
-  for (int i = 0; i < 4; i++)
+  if (isOpen == 0)
   {
-    strcpy(fullPath, pathOptions[i]);   // makes an array with each path including command
-    strcat(fullPath, token[0]);
-
-    /* checks if the path is valid and calls exec if it is */
-    if (access(fullPath, X_OK) == 0)
+    fp = fopen(filename, "r");
+    if (fp == NULL)
     {
-      execv(fullPath, token);
+      errMess();
     }
+    else
+    {
+      isOpen = 1;
+      strcpy(currentImage, filename);
+    }
+  }
+  else
+  {
+    printf("FAT32 image already open.\n");
+  }
+}
+
+void saveImage(char *filename)
+{
+  if (isOpen == 1)
+  {
+    FILE *new_fp = fopen(filename, "w");
+    if (new_fp == NULL)
+    {
+      errMess();
+    }
+    else
+    {
+      char buffer[512];
+      fseek(fp, 0, SEEK_SET);
+      while (fread(buffer, 1, 512, fp) == 512)
+      {
+        fwrite(buffer, 1, 512, new_fp);
+      }
+      fclose(new_fp);
+    }
+  }
+  else
+  {
+    printf("No image is open.\n");
   }
 }
 
@@ -186,10 +230,79 @@ int main(int argc, char *argv[])
         errMess();
       }
     }
+    else if (strcmp(token[0], "open") == 0)
+    {
+      if (token[1] != NULL && token[2] == NULL)
+      {
+        char *filename = token[1];
+        openImage(filename);
+      }
+      else
+      {
+        errMess();
+      }
+    }
+    else if (strcmp(token[0], "close") == 0)
+    {
+      if (token[1] == NULL)
+      {
+        if (isOpen == 1)
+        {
+          fclose(fp);
+          isOpen = 0;
+        }
+        else
+        {
+          printf("No image is open.\n");
+        }
+      }
+      else
+      {
+        errMess();
+      }
+    }
+    else if (strcmp(token[0], "save") == 0)
+    {
+      if (token[1] != NULL && token[2] == NULL) 
+      {
+        saveImage(token[1]);
+      } 
+      else if (token[1] == NULL)
+      {
+        saveImage(currentImage);
+      }
+      else
+      {
+        errMess();
+      }
+    }
+    else if (strcmp(token[0], "info") == 0)
+    {
+
+    }
+    else if (strcmp(token[0], "stat") == 0)
+    {
+
+    }
+    else if (strcmp(token[0], "get") == 0)
+    {
+
+    }
+    else if (strcmp(token[0], "put") == 0)
+    {
+
+    }
+    else if (strcmp(token[0], "ls") == 0)
+    {
+
+    }
+    else if (strcmp(token[0], "read") == 0)
+    {
+
+    }
     else
     {
-      
-      
+      errMess();
     }
 
     free(head_ptr);
