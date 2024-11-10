@@ -64,6 +64,16 @@ FILE *fp = NULL;  // File pointer
 int isOpen = 0;  // Flag to check if a file is open
 char currentImage[100];  // Name of the current FAT32 image
 
+// File info storage
+uint16_t BPB_BytsPerSec;
+uint8_t BPB_SecPerClus;
+uint16_t BPB_RsvdSecCnt;
+uint8_t BPB_NumFATs;
+uint32_t BPB_FATSz32;
+uint32_t BPB_ExtFlags;
+uint32_t BPB_RootClus;
+uint32_t BPB_FSInfo;
+
 void errMess()
 {
   char error_message[30] = "An error has occurred\n";
@@ -117,6 +127,64 @@ void saveImage(char *filename)
   }
 }
 
+void fileNameFormat(char * file, char fileName[])
+{
+  memset( fileName, ' ', 12 );
+  char fileCopy[12];
+  strncpy(fileCopy, file, 12);
+  fileCopy[11] = '\0';  // Ensure null termination
+
+  char *token = strtok(fileCopy, ".");
+  strncpy( fileName, token, strlen( token ) );
+
+  token = strtok( NULL, "." );
+
+  if( token )
+  {
+    strncpy( (char*)(fileName+8), token, strlen(token ) );
+  }
+
+  fileName[11] = '\0';
+
+  int i;
+  for( i = 0; i < 11; i++ )
+  {
+    fileName[i] = toupper( fileName[i] );
+  }
+
+  // printing file name for debugging
+  //   for( i = 0; i < 11; i++ )
+  // {
+  //   printf("%c", fileName[i]);
+  // }
+}
+
+/*
+ * Function    : LBAToOffset
+ * Parameters  : The current sector number that points to a block of data
+ * Returns     : The value of the address for that block of data
+ * Description : Finds the starting address of a block of data given the sector number
+ *               corresponding to that data block.
+ */
+int LBAToOffset(int32_t sector) {
+    return ((sector - 2) * BPB_BytsPerSec) + (BPB_BytsPerSec * BPB_RsvdSecCnt) + 
+           (BPB_NumFATs * BPB_FATSz32 * BPB_BytsPerSec);
+}
+
+/*
+ * Name    : NextLB
+ * Purpose : Given a logical block address, look up into the first FAT and
+ *           return the logical block address of the block in the file.
+ *           If there is no further blocks then return -1
+ */
+int16_t NextLB(uint32_t sector) {
+    uint32_t FATAddress = (BPB_BytsPerSec * BPB_RsvdSecCnt) + (sector * 4);
+    int16_t val;
+    fseek(fp, FATAddress, SEEK_SET);
+    fread(&val, 2, 1, fp);
+    return val;
+}
+
 int main(int argc, char *argv[])
 {
   FILE *input = stdin;        //stdin unless told otherwise (batch mode)
@@ -137,16 +205,6 @@ int main(int argc, char *argv[])
   }
 
   char *command_string = (char *)malloc(MAX_COMMAND_SIZE);
-
-    // File info storage
-    uint16_t BPB_BytsPerSec;
-    uint8_t BPB_SecPerClus;
-    uint16_t BPB_RsvdSecCnt;
-    uint8_t BPB_NumFATs;
-    uint32_t BPB_FATSz32;
-    uint32_t BPB_ExtFlags;
-    uint32_t BPB_RootClus;
-    uint32_t BPB_FSInfo;
 
   while (1)
   {
@@ -280,7 +338,7 @@ int main(int argc, char *argv[])
         }
         // for(int i = 0; i < 16; i++)
         // {
-        // printf("%s   %d    %d\n", dir[i].DIR_Name, dir[i].DIR_Attr, dir[i].DIR_FileSize);
+        // printf("%s\n", dir[i].DIR_Name);
         // }
       }
       else
@@ -342,7 +400,31 @@ int main(int argc, char *argv[])
     }
     else if (strcmp(token[0], "stat") == 0)
     {
-
+      if (token[1] != NULL && token[2] == NULL)
+      {
+        char fileName[12];
+        fileNameFormat(token[1], fileName);
+        int found = 0;
+        for (int i = 0; i < 16; i++)
+        {
+          if (strncmp(fileName, dir[i].DIR_Name, 11) == 0)
+          {
+            found = 1;
+            printf("Attribute: %d\n", dir[i].DIR_Attr);
+            printf("Starting Cluster Number: %d\n", dir[i].DIR_FirstClusterLow);
+            printf("Size: %d\n", dir[i].DIR_FileSize);
+            break;
+          }
+        }
+        if (found == 0)
+        {
+          errMess;
+        } 
+      }
+      else
+      {
+        errMess();
+      }
     }
     else if (strcmp(token[0], "get") == 0)
     {
