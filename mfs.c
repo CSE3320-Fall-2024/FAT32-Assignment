@@ -49,7 +49,6 @@
 
 #define MAX_NUM_ARGUMENTS 32
 
-// FAT32 Structures and Global Variables
 struct __attribute__((__packed__)) DirectoryEntry {
     char DIR_Name[11];
     uint8_t DIR_Attr;
@@ -69,22 +68,6 @@ void errMess()
 {
   char error_message[30] = "An error has occurred\n";
   write(STDERR_FILENO, error_message, strlen(error_message));
-}
-
-void changeDir(char *token[])
-{
-  if (token[1] != NULL && token[2] == NULL)       // must have 1 argument after cd and 1 only
-  {
-    chdir(token[1]);
-    if (chdir(token[1]) != 0)
-    {
-      errMess();
-    }
-  }
-  else
-  {
-    errMess();
-  }
 }
 
 void openImage(char *filename)
@@ -155,6 +138,16 @@ int main(int argc, char *argv[])
 
   char *command_string = (char *)malloc(MAX_COMMAND_SIZE);
 
+    // File info storage
+    uint16_t BPB_BytsPerSec;
+    uint8_t BPB_SecPerClus;
+    uint16_t BPB_RsvdSecCnt;
+    uint8_t BPB_NumFATs;
+    uint32_t BPB_FATSz32;
+    uint32_t BPB_ExtFlags;
+    uint32_t BPB_RootClus;
+    uint32_t BPB_FSInfo;
+
   while (1)
   {
     // Print prompt only in interactive mode
@@ -203,21 +196,10 @@ int main(int argc, char *argv[])
       token_count++;
     }
 
-    // DEBUG: making sure tokenization is working
-    // int token_index = 0;
-    // for (token_index = 0; token_index < token_count; token_index++)
-    // {
-    //   printf("token[%d] = %s\n", token_index, token[token_index]);
-    // }
-
     if (token[0] == NULL)     //print again when we enter blank stuff
     {
       free(head_ptr);
       continue;
-    }
-    else if (strcmp(token[0], "cd") == 0)
-    {
-      changeDir(token);
     }
     else if (strcmp(token[0], "quit") == 0 || strcmp(token[0], "exit") == 0)
     {
@@ -236,6 +218,70 @@ int main(int argc, char *argv[])
       {
         char *filename = token[1];
         openImage(filename);
+
+        // once file is open, get the FAT32 info
+        fseek(fp, 11, SEEK_SET);
+        fread(&BPB_BytsPerSec, 1, 2, fp);
+
+        fseek(fp, 13, SEEK_SET);
+        fread(&BPB_SecPerClus, 1, 1, fp);
+
+        fseek(fp, 14, SEEK_SET);
+        fread(&BPB_RsvdSecCnt, 1, 2, fp);
+
+        fseek(fp, 16, SEEK_SET);
+        fread(&BPB_NumFATs, 1, 1, fp);
+
+        fseek(fp, 36, SEEK_SET);
+        fread(&BPB_FATSz32, 1, 4, fp);
+
+        fseek(fp, 40, SEEK_SET);
+        fread(&BPB_ExtFlags, 1, 2, fp);
+
+        fseek(fp, 44, SEEK_SET);
+        fread(&BPB_RootClus, 1, 4, fp);
+
+        fseek(fp, 48, SEEK_SET);
+        fread(&BPB_FSInfo, 1, 2, fp);
+
+        //root directory address
+        int root = (BPB_NumFATs * BPB_FATSz32 * BPB_BytsPerSec) + (BPB_RsvdSecCnt * BPB_BytsPerSec);
+
+        // fill directory entries
+        fseek(fp, root, SEEK_SET);
+
+        //populate the directory entries
+        // for (int i = 0; i < 16; i++)
+        // {
+        //   fread(&dir[i], 1, 32, fp);
+        // }
+
+        for (int i = 0; i < 16; i++) 
+        {
+        // directory name (11 bytes at offset 0x00)
+        fseek(fp, root + i * 32 + 0x00, SEEK_SET);
+        fread(dir[i].DIR_Name, sizeof(char), 11, fp);
+
+        // attribute (1 byte at offset 0x0B)
+        fseek(fp, root + i * 32 + 0x0B, SEEK_SET);
+        fread(&dir[i].DIR_Attr, sizeof(uint8_t), 1, fp);
+
+        // First Cluster High (2 bytes at offset 0x14)
+        fseek(fp, root + i * 32 + 0x14, SEEK_SET);
+        fread(&dir[i].DIR_FirstClusterHigh, sizeof(uint16_t), 1, fp);
+
+        // First Cluster Low (2 bytes at offset 0x1A)
+        fseek(fp, root + i * 32 + 0x1A, SEEK_SET);
+        fread(&dir[i].DIR_FirstClusterLow, sizeof(uint16_t), 1, fp);
+
+        // file size (4 bytes at offset 0x1C)
+        fseek(fp, root + i * 32 + 0x1C, SEEK_SET);
+        fread(&dir[i].DIR_FileSize, sizeof(uint32_t), 1, fp);
+        }
+        // for(int i = 0; i < 16; i++)
+        // {
+        // printf("%s   %d    %d\n", dir[i].DIR_Name, dir[i].DIR_Attr, dir[i].DIR_FileSize);
+        // }
       }
       else
       {
@@ -253,7 +299,7 @@ int main(int argc, char *argv[])
         }
         else
         {
-          printf("No image is open.\n");
+          printf("No image is open\n");
         }
       }
       else
@@ -278,7 +324,21 @@ int main(int argc, char *argv[])
     }
     else if (strcmp(token[0], "info") == 0)
     {
-
+      if (isOpen == 0)
+      {
+        printf("No image is open\n");
+      }
+      else
+      {
+        printf("BPB_BytsPerSec:   %d    0x%x\n", BPB_BytsPerSec, BPB_BytsPerSec);
+        printf("BPB_SecPerClus:   %d    0x%x\n", BPB_SecPerClus, BPB_SecPerClus);
+        printf("BPB_RsvdSecCnt:   %d    0x%x\n", BPB_RsvdSecCnt, BPB_RsvdSecCnt);
+        printf("BPB_NumFATs:      %d    0x%x\n", BPB_NumFATs, BPB_NumFATs);
+        printf("BPB_FATSz32:      %d    0x%x\n", BPB_FATSz32, BPB_FATSz32);
+        printf("BPB_ExtFlags:     %d    0x%x\n", BPB_ExtFlags, BPB_ExtFlags);
+        printf("BPB_RootClus:     %d    0x%x\n", BPB_RootClus, BPB_RootClus);
+        printf("BPB_FSInfo:       %d    0x%x\n", BPB_FSInfo, BPB_FSInfo);
+      }
     }
     else if (strcmp(token[0], "stat") == 0)
     {
@@ -292,13 +352,17 @@ int main(int argc, char *argv[])
     {
 
     }
+    else if (strcmp(token[0], "cd") == 0)
+    {
+      
+    }
     else if (strcmp(token[0], "ls") == 0)
     {
 
     }
     else if (strcmp(token[0], "read") == 0)
     {
-
+      
     }
     else
     {
