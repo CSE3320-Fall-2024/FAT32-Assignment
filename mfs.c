@@ -167,8 +167,7 @@ void fileNameFormat(char * file, char fileName[])
  *               corresponding to that data block.
  */
 int LBAToOffset(int32_t sector) {
-    return ((sector - 2) * BPB_BytsPerSec) + (BPB_BytsPerSec * BPB_RsvdSecCnt) + 
-           (BPB_NumFATs * BPB_FATSz32 * BPB_BytsPerSec);
+    return ((sector - 2) * BPB_BytsPerSec) + (BPB_BytsPerSec * BPB_RsvdSecCnt) + (BPB_NumFATs * BPB_FATSz32 * BPB_BytsPerSec);
 }
 
 /*
@@ -489,7 +488,7 @@ int main(int argc, char *argv[])
     }
     else if (strcmp(token[0], "put") == 0)
     {
-      
+
     }
     else if (strcmp(token[0], "cd") == 0)
     {
@@ -497,11 +496,64 @@ int main(int argc, char *argv[])
     }
     else if (strcmp(token[0], "ls") == 0)
     {
-
+      for (int i = 0; i < 16; i++)
+      {
+        if (dir[i].DIR_Attr == 0x01 || dir[i].DIR_Attr == 0x10 || dir[i].DIR_Attr == 0x20)
+        {
+          printf("%s\n", dir[i].DIR_Name);
+        }
+      }
     }
     else if (strcmp(token[0], "read") == 0)
     {
-      
+      if (token[1] == NULL || token[2] == NULL || token[3] == NULL)
+      {
+        errMess();
+      }
+      else
+      {
+        char fileName[12];
+        fileNameFormat(token[1], fileName);
+        int position = atoi(token[2]);
+        int numOfBytes = atoi(token[3]);
+        char buffer[numOfBytes];
+        
+        for (int i = 0; i < 16; i++)
+        {
+          if (strncmp(fileName, dir[i].DIR_Name, 11) == 0)
+          {
+            int cluster = dir[i].DIR_FirstClusterLow;
+            int offset = LBAToOffset(cluster);
+            int size = dir[i].DIR_FileSize;
+
+            if (position > size)
+            {
+              errMess();
+            }
+            else
+            {
+              fseek(fp, offset + position, SEEK_SET);
+              fread(&buffer, 1, numOfBytes, fp);
+            }
+            for (int j = 0; j < numOfBytes; j++)
+            {
+              if (strcmp(token[4], "-dec") == 0)
+              {
+                printf("%d ", buffer[j]);
+              }
+              else if (strcmp(token[4], "-ascii") == 0)
+              {
+                printf("%c ", buffer[j]);
+              }
+              else
+              {
+                printf("%x ", buffer[j]);
+              }
+            }
+            printf("\n");
+          }
+        }
+      }
     }
     else if (strcmp(token[0], "del") == 0)
     {
