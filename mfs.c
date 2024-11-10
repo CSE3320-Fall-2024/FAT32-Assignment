@@ -428,11 +428,68 @@ int main(int argc, char *argv[])
     }
     else if (strcmp(token[0], "get") == 0)
     {
+      if (token[1] != NULL)
+      {
+        char fileName[12];
+        fileNameFormat(token[1], fileName);
+        int found = 0;
+        for (int i = 0; i < 16; i++)
+        {
+          if (strncmp(fileName, dir[i].DIR_Name, 11) == 0)
+          {
+            found = 1;
+            int cluster = dir[i].DIR_FirstClusterLow;
+            int offset = LBAToOffset(cluster);
+            int size = dir[i].DIR_FileSize;
+            char buffer[512];
+            char *outputFileName;
 
+            if (token[2] != NULL)
+            {
+              outputFileName = token[2];
+            }
+            else
+            {
+              outputFileName = token[1];
+            }
+
+            FILE *new_fp = fopen(outputFileName, "w");
+            
+            while (size > 0)
+            {
+              fseek(fp, offset, SEEK_SET);
+              if (size > 512)
+              {
+                fread(buffer, 1, 512, fp);
+                fwrite(buffer, 1, 512, new_fp);
+                size -= 512;
+                cluster = NextLB(cluster);
+                offset = LBAToOffset(cluster);
+              }
+              else
+              {
+                fread(buffer, 1, size, fp);
+                fwrite(buffer, 1, size, new_fp);
+                size = 0;
+              }
+            }
+            fclose(new_fp);
+            break;
+          }
+        }
+        if (found == 0)
+        {
+          errMess();
+        }
+      }
+      else
+      {
+        errMess();
+      }
     }
     else if (strcmp(token[0], "put") == 0)
     {
-
+      
     }
     else if (strcmp(token[0], "cd") == 0)
     {
@@ -445,6 +502,14 @@ int main(int argc, char *argv[])
     else if (strcmp(token[0], "read") == 0)
     {
       
+    }
+    else if (strcmp(token[0], "del") == 0)
+    {
+      
+    }
+    else if (strcmp(token[0], "undel") == 0)
+    {
+
     }
     else
     {
