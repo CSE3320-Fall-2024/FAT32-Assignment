@@ -159,6 +159,33 @@ void fileNameFormat(char * file, char fileName[])
   // }
 }
 
+void populateFileDirectory (int offset)
+{
+  fseek(fp, offset, SEEK_SET);
+  for (int i = 0; i < 16; i++) 
+  {
+    // directory name (11 bytes at offset 0x00)
+    fseek(fp, offset + i * 32 + 0x00, SEEK_SET);
+    fread(dir[i].DIR_Name, sizeof(char), 11, fp);
+
+    // attribute (1 byte at offset 0x0B)
+    fseek(fp, offset + i * 32 + 0x0B, SEEK_SET);
+    fread(&dir[i].DIR_Attr, sizeof(uint8_t), 1, fp);
+
+    // First Cluster High (2 bytes at offset 0x14)
+    fseek(fp, offset + i * 32 + 0x14, SEEK_SET);
+    fread(&dir[i].DIR_FirstClusterHigh, sizeof(uint16_t), 1, fp);
+
+    // First Cluster Low (2 bytes at offset 0x1A)
+    fseek(fp, offset + i * 32 + 0x1A, SEEK_SET);
+    fread(&dir[i].DIR_FirstClusterLow, sizeof(uint16_t), 1, fp);
+
+    // file size (4 bytes at offset 0x1C)
+    fseek(fp, offset + i * 32 + 0x1C, SEEK_SET);
+    fread(&dir[i].DIR_FileSize, sizeof(uint32_t), 1, fp);
+  }
+}
+
 /*
  * Function    : LBAToOffset
  * Parameters  : The current sector number that points to a block of data
@@ -304,41 +331,7 @@ int main(int argc, char *argv[])
         //root directory address
         int root = (BPB_NumFATs * BPB_FATSz32 * BPB_BytsPerSec) + (BPB_RsvdSecCnt * BPB_BytsPerSec);
 
-        // fill directory entries
-        fseek(fp, root, SEEK_SET);
-
-        //populate the directory entries
-        // for (int i = 0; i < 16; i++)
-        // {
-        //   fread(&dir[i], 1, 32, fp);
-        // }
-
-        for (int i = 0; i < 16; i++) 
-        {
-        // directory name (11 bytes at offset 0x00)
-        fseek(fp, root + i * 32 + 0x00, SEEK_SET);
-        fread(dir[i].DIR_Name, sizeof(char), 11, fp);
-
-        // attribute (1 byte at offset 0x0B)
-        fseek(fp, root + i * 32 + 0x0B, SEEK_SET);
-        fread(&dir[i].DIR_Attr, sizeof(uint8_t), 1, fp);
-
-        // First Cluster High (2 bytes at offset 0x14)
-        fseek(fp, root + i * 32 + 0x14, SEEK_SET);
-        fread(&dir[i].DIR_FirstClusterHigh, sizeof(uint16_t), 1, fp);
-
-        // First Cluster Low (2 bytes at offset 0x1A)
-        fseek(fp, root + i * 32 + 0x1A, SEEK_SET);
-        fread(&dir[i].DIR_FirstClusterLow, sizeof(uint16_t), 1, fp);
-
-        // file size (4 bytes at offset 0x1C)
-        fseek(fp, root + i * 32 + 0x1C, SEEK_SET);
-        fread(&dir[i].DIR_FileSize, sizeof(uint32_t), 1, fp);
-        }
-        // for(int i = 0; i < 16; i++)
-        // {
-        // printf("%s\n", dir[i].DIR_Name);
-        // }
+        populateFileDirectory(root);
       }
       else
       {
@@ -492,7 +485,42 @@ int main(int argc, char *argv[])
     }
     else if (strcmp(token[0], "cd") == 0)
     {
-      
+      if (token[1] != NULL && token[2] == NULL)
+      {
+        if (strcmp(token[1], "..") == 0)
+        {
+          int cluster = BPB_RootClus;
+          int offset = LBAToOffset(cluster);
+          populateFileDirectory(offset);
+        }
+        else if (strcmp(token[1], ".") == 0)
+        {
+          continue;
+        }
+        else
+        {
+          char dirName[12];
+          fileNameFormat(token[1], dirName);
+          int found = 0;
+          for (int i = 0; i < 16; i++)
+          {
+            if (strncmp(dirName, dir[i].DIR_Name, 11) == 0)
+            {
+              found = 1;
+              if (dir[i].DIR_Attr == 0x10)
+              {
+                int cluster = dir[i].DIR_FirstClusterLow;
+                int offset = LBAToOffset(cluster);
+                populateFileDirectory(offset);
+              }
+              else
+              {
+                errMess();
+              }
+            }
+          }
+        }
+      }
     }
     else if (strcmp(token[0], "ls") == 0)
     {
@@ -537,7 +565,11 @@ int main(int argc, char *argv[])
             }
             for (int j = 0; j < numOfBytes; j++)
             {
-              if (strcmp(token[4], "-dec") == 0)
+              if (token[4] == NULL)
+              {
+                printf("%x ", buffer[j]);
+              }
+              else if (strcmp(token[4], "-dec") == 0)
               {
                 printf("%d ", buffer[j]);
               }
@@ -557,11 +589,55 @@ int main(int argc, char *argv[])
     }
     else if (strcmp(token[0], "del") == 0)
     {
-      
+      if (token[1] != NULL && token[2] == NULL)
+      {
+        char fileName[12];
+        fileNameFormat(token[1], fileName);
+        int found = 0;
+        for (int i = 0; i < 16; i++)
+        {
+          if (strncmp(fileName, dir[i].DIR_Name, 11) == 0)
+          {
+            found = 1;
+            dir[i].DIR_Name[0] = 0xE5; // Add 0xE5 to the first byte of the file name
+            break;
+          }
+        }
+        if (found == 0)
+        {
+          errMess();
+        }
+      }
+      else
+      {
+        errMess();
+      }
     }
     else if (strcmp(token[0], "undel") == 0)
     {
-
+      if (token[1] != NULL && token[2] == NULL)
+      {
+        char fileName[12];
+        fileNameFormat(token[1], fileName);
+        int found = 0;
+        for (int i = 0; i < 16; i++)
+        {
+          if (strncmp(fileName, dir[i].DIR_Name, 11) == 0)
+          {
+            found = 1;
+            dir[i].DIR_Name[0] = 0x00; // removes 0xE5 from the first byte of the file name
+            break;
+          }
+        }
+        if (found == 0)
+        {
+          errMess();
+        }
+      }
+      else
+      {
+        errMess();
+      }
     }
     else
     {
