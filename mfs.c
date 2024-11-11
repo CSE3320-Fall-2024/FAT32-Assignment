@@ -188,6 +188,43 @@ void populateFileDirectory (int offset)
   }
 }
 
+void changeDir(char *directory)
+{
+  if (strcmp(directory, "..") == 0)
+  {
+    int cluster = BPB_RootClus;
+    int offset = LBAToOffset(cluster);
+    populateFileDirectory(offset);
+  }
+  else if (strcmp(directory, ".") == 0)
+  {
+    exit;
+  }
+  else
+  {
+    char dirName[12];
+    fileNameFormat(directory, dirName);
+    int found = 0;
+    for (int i = 0; i < 16; i++)
+    {
+      if (strncmp(dirName, dir[i].DIR_Name, 11) == 0)
+      {
+        found = 1;
+        if (dir[i].DIR_Attr == 0x10)
+        {
+          int cluster = dir[i].DIR_FirstClusterLow;
+          int offset = LBAToOffset(cluster);
+          populateFileDirectory(offset);
+        }
+        else
+        {
+          errMess();
+        }
+      }
+    }
+  }
+}
+
 /*
  * Function    : LBAToOffset
  * Parameters  : The current sector number that points to a block of data
@@ -504,39 +541,22 @@ int main(int argc, char *argv[])
     {
       if (token[1] != NULL && token[2] == NULL)
       {
-        if (strcmp(token[1], "..") == 0)
+        char pathCopy[MAX_INPUT];
+        strncpy(pathCopy, token[1], sizeof(pathCopy));
+        pathCopy[sizeof(pathCopy) - 1] = '\0'; 
+
+        // Tokenize the path using "/" as the delimiter
+        char *component = strtok(pathCopy, "/");
+        
+        while (component != NULL) 
         {
-          int cluster = BPB_RootClus;
-          int offset = LBAToOffset(cluster);
-          populateFileDirectory(offset);
+          changeDir(component); // Process each directory component
+          component = strtok(NULL, "/"); // Get the next component
         }
-        else if (strcmp(token[1], ".") == 0)
-        {
-          continue;
-        }
-        else
-        {
-          char dirName[12];
-          fileNameFormat(token[1], dirName);
-          int found = 0;
-          for (int i = 0; i < 16; i++)
-          {
-            if (strncmp(dirName, dir[i].DIR_Name, 11) == 0)
-            {
-              found = 1;
-              if (dir[i].DIR_Attr == 0x10)
-              {
-                int cluster = dir[i].DIR_FirstClusterLow;
-                int offset = LBAToOffset(cluster);
-                populateFileDirectory(offset);
-              }
-              else
-              {
-                errMess();
-              }
-            }
-          }
-        }
+      }
+      else
+      {
+        errMess();
       }
     }
     else if (strcmp(token[0], "ls") == 0)
