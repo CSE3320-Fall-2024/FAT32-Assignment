@@ -49,6 +49,8 @@
 
 #define MAX_NUM_ARGUMENTS 32
 
+#define CHONK 512 // Block size
+
 struct __attribute__((__packed__)) DirectoryEntry {
     char DIR_Name[11];
     uint8_t DIR_Attr;
@@ -112,11 +114,11 @@ void saveImage(char *filename)
     }
     else
     {
-      char buffer[512];
+      char buffer[CHONK];
       fseek(fp, 0, SEEK_SET);
-      while (fread(buffer, 1, 512, fp) == 512)
+      while (fread(buffer, 1, CHONK, fp) == CHONK)
       {
-        fwrite(buffer, 1, 512, new_fp);
+        fwrite(buffer, 1, CHONK, new_fp);
       }
       fclose(new_fp);
     }
@@ -433,7 +435,7 @@ int main(int argc, char *argv[])
             int cluster = dir[i].DIR_FirstClusterLow;
             int offset = LBAToOffset(cluster);
             int size = dir[i].DIR_FileSize;
-            char buffer[512];
+            char buffer[CHONK];
             char *outputFileName;
 
             if (token[2] != NULL)
@@ -450,11 +452,11 @@ int main(int argc, char *argv[])
             while (size > 0)
             {
               fseek(fp, offset, SEEK_SET);
-              if (size > 512)
+              if (size > CHONK)
               {
-                fread(buffer, 1, 512, fp);
-                fwrite(buffer, 1, 512, new_fp);
-                size -= 512;
+                fread(buffer, 1, CHONK, fp);
+                fwrite(buffer, 1, CHONK, new_fp);
+                size -= CHONK;
                 cluster = NextLB(cluster);
                 offset = LBAToOffset(cluster);
               }
@@ -481,7 +483,22 @@ int main(int argc, char *argv[])
     }
     else if (strcmp(token[0], "put") == 0)
     {
+      if (token[1] != NULL)
+      {
+        char fileName[12];
+        fileNameFormat(token[1], fileName);
 
+        FILE *src_fp = fopen(token[1], "rb");
+        if (src_fp == NULL)
+        {
+          errMess();
+        }
+
+      }
+      else
+      {
+        errMess();
+      }
     }
     else if (strcmp(token[0], "cd") == 0)
     {
@@ -526,7 +543,7 @@ int main(int argc, char *argv[])
     {
       for (int i = 0; i < 16; i++)
       {
-        if (dir[i].DIR_Attr == 0x01 || dir[i].DIR_Attr == 0x10 || dir[i].DIR_Attr == 0x20)
+        if (dir[i].DIR_Attr == 0x01 || dir[i].DIR_Attr == 0x10 || dir[i].DIR_Attr == 0x20 && dir[i].DIR_Name[0] != 0xE5)
         {
           printf("%s\n", dir[i].DIR_Name);
         }
@@ -599,7 +616,29 @@ int main(int argc, char *argv[])
           if (strncmp(fileName, dir[i].DIR_Name, 11) == 0)
           {
             found = 1;
-            dir[i].DIR_Name[0] = 0xE5; // Add 0xE5 to the first byte of the file name
+            char temp[12];
+            for (int k = 0; k < 12; k++)
+            {
+              temp[k] = fileName[k]; // Copy the file name to temp
+            }
+
+            for (int j = 0; j < 12; j++)
+            {
+              if(fileName[j] != ' ')
+              {
+                fileName[j+1] = temp[j];
+              }
+              else
+              {
+                break;
+              }
+            }
+            fileName[0] = 0xE5;
+            //printf("%s\n", fileName);
+            for (int m = 0; m < 11; m++)
+            {
+              dir[i].DIR_Name[m] = fileName[m];
+            }
             break;
           }
         }
@@ -622,11 +661,27 @@ int main(int argc, char *argv[])
         int found = 0;
         for (int i = 0; i < 16; i++)
         {
-          if (strncmp(fileName, dir[i].DIR_Name, 11) == 0)
+          // Checking all deleted files
+          if (dir[i].DIR_Name[0] == 0xE5)
           {
-            found = 1;
-            dir[i].DIR_Name[0] = 0x00; // removes 0xE5 from the first byte of the file name
-            break;
+            for (int k = 0; k < 12; k++)
+            {
+              if (fileName[k] != ' ' && k < 7)
+              {
+                if (fileName[k] != dir[i].DIR_Name[k+1])
+                {
+                  break;
+                }
+              }
+              if (k == 11)
+              {
+                found = 1;
+                for(int j = 0; j < 11; j++)
+                {
+                  dir[i].DIR_Name[j] = fileName[j];
+                }
+              }
+            }
           }
         }
         if (found == 0)
