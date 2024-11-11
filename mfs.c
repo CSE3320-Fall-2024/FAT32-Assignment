@@ -86,7 +86,7 @@ void openImage(char *filename)
 {
   if (isOpen == 0)
   {
-    fp = fopen(filename, "r");
+    fp = fopen(filename, "r+");
     if (fp == NULL)
     {
       errMess();
@@ -449,7 +449,7 @@ int main(int argc, char *argv[])
         }
         if (found == 0)
         {
-          errMess;
+          printf("Error: File not found\n");
         } 
       }
       else
@@ -523,14 +523,70 @@ int main(int argc, char *argv[])
       if (token[1] != NULL)
       {
         char fileName[12];
+        char changeName[12];
         fileNameFormat(token[1], fileName);
+
+        if (token[2] == NULL)
+        {
+          fileNameFormat(token[1], changeName);
+        }
+        else
+        {
+          fileNameFormat(token[2], changeName);
+        }
 
         FILE *src_fp = fopen(token[1], "rb");
         if (src_fp == NULL)
         {
-          errMess();
+          printf("Error: File not found\n");
         }
 
+        // Find empty directory entry
+        int pos = -1;
+        for(int i = 0; i < 16; i++)
+        {
+          if (dir[i].DIR_Name[0] == 0xE5 || dir[i].DIR_Name[0] == 0x00)
+          {
+            pos = i;
+            break;
+          }
+        }
+        if (pos == -1)
+        {
+          printf("No space ig??????\n");
+          fclose(src_fp);
+          continue;
+        }
+        // Change Directory Entry info
+        for (int i = 0; i < 12; i++)
+        {
+          dir[pos].DIR_Name[i] = changeName[i];
+        }
+        dir[pos].DIR_Attr = 0x20;
+        dir[pos].DIR_FileSize = 0;
+
+        // Copy blocks from file to image starting at cluster low
+        int cluster = dir[pos].DIR_FirstClusterLow;
+        int offset = LBAToOffset(cluster);
+        char buffer[CHONK];
+        int size = 0;
+        while (1)
+        {
+          size = fread(buffer, 1, CHONK, src_fp);
+          fseek(fp, offset, SEEK_SET);
+          fwrite(buffer, 1, size, fp);
+          if (size > CHONK)
+          {
+            cluster = NextLB(cluster);
+            offset = LBAToOffset(cluster);
+          }
+          else
+          {
+            break;
+          }
+        }
+        // Update directory entry
+        dir[pos].DIR_FileSize = ftell(src_fp);
       }
       else
       {
@@ -550,6 +606,7 @@ int main(int argc, char *argv[])
         
         while (component != NULL) 
         {
+          //printf("Tokenized component: %s\n", component); tbh tokenization doesnt work, just kinda works for ../name
           changeDir(component); // Process each directory component
           component = strtok(NULL, "/"); // Get the next component
         }
@@ -563,7 +620,7 @@ int main(int argc, char *argv[])
     {
       for (int i = 0; i < 16; i++)
       {
-        if (dir[i].DIR_Attr == 0x01 || dir[i].DIR_Attr == 0x10 || dir[i].DIR_Attr == 0x20 && dir[i].DIR_Name[0] != 0xE5)
+        if ((dir[i].DIR_Attr == 0x01 || dir[i].DIR_Attr == 0x10 || dir[i].DIR_Attr == 0x20) && dir[i].DIR_Name[0] != 0xE5)
         {
           printf("%s\n", dir[i].DIR_Name);
         }
@@ -674,7 +731,7 @@ int main(int argc, char *argv[])
     }
     else if (strcmp(token[0], "undel") == 0)
     {
-      if (token[1] != NULL && token[2] == NULL)
+      if (token[1] != NULL)
       {
         char fileName[12];
         fileNameFormat(token[1], fileName);
@@ -686,10 +743,11 @@ int main(int argc, char *argv[])
           {
             for (int k = 0; k < 12; k++)
             {
-              if (fileName[k] != ' ' && k < 7)
+              if (k < 3)
               {
                 if (fileName[k] != dir[i].DIR_Name[k+1])
                 {
+                  printf("Error: File not found\n");
                   break;
                 }
               }
@@ -706,6 +764,7 @@ int main(int argc, char *argv[])
         }
         if (found == 0)
         {
+          printf("Error: File not found\n");
           errMess();
         }
       }
