@@ -618,6 +618,21 @@ int main(int argc, char *argv[])
     }
     else if (strcmp(token[0], "ls") == 0)
     {
+      if (strcmp(token[1], "..") == 0)
+      {
+        char currDir[12] = dir[0].DIR_Name;
+        changeDir("..");
+        for (int i = 0; i < 16; i++)
+        {
+          if ((dir[i].DIR_Attr == 0x01 || dir[i].DIR_Attr == 0x10 || dir[i].DIR_Attr == 0x20) && dir[i].DIR_Name[0] != 0xE5)
+          {
+            printf("%s\n", dir[i].DIR_Name);
+          }
+        }
+        changeDir(currDir);
+      }
+      else
+      {
       for (int i = 0; i < 16; i++)
       {
         if ((dir[i].DIR_Attr == 0x01 || dir[i].DIR_Attr == 0x10 || dir[i].DIR_Attr == 0x20) && dir[i].DIR_Name[0] != 0xE5)
@@ -625,6 +640,9 @@ int main(int argc, char *argv[])
           printf("%s\n", dir[i].DIR_Name);
         }
       }
+      }
+
+
     }
     else if (strcmp(token[0], "read") == 0)
     {
